@@ -32,7 +32,14 @@ import {
   Unlock,
   KeyRound,
   ChevronDown,
-  Users
+  Users,
+  Dice5,
+  Eraser,
+  ShieldCheck,
+  Activity,
+  ListChecks,
+  Crown,
+  RadioTower
 } from 'lucide-react';
 
 // --- FIREBASE INITIALIZATION ---
@@ -736,23 +743,48 @@ export default function App() {
     return currentRoom.players[uid] || null;
   };
 
+  const totalPlayers = currentRoom ? Object.keys(currentRoom.players || {}).length : 0;
+  const readyPlayers = currentRoom
+    ? Object.values(currentRoom.players || {}).filter((player) => player.isReady).length
+    : 0;
+  const localCompletedLines = currentRoom
+    ? calculateCompletedLines(board, currentRoom.calledNumbers || [])
+    : 0;
+
   // Local keyframes so the animation utility classes actually do something
   // even on a CDN Tailwind build that doesn't define them.
   const localStyles = `
     @keyframes bingoFadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes bingoSpinSlow { to { transform: rotate(360deg); } }
     @keyframes bingoFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-    @keyframes bingoGlow { 0%,100% { box-shadow: 0 0 22px -6px rgba(16,185,129,.55); } 50% { box-shadow: 0 0 34px -4px rgba(45,212,191,.85); } }
+    @keyframes bingoGlow { 0%,100% { box-shadow: 0 0 20px -8px rgba(250,204,21,.65); } 50% { box-shadow: 0 0 32px -8px rgba(34,211,238,.8); } }
     .animate-fade-in { animation: bingoFadeIn .35s ease-out; }
     .animate-spin-slow { animation: bingoSpinSlow 6s linear infinite; }
     .animate-float { animation: bingoFloat 4s ease-in-out infinite; }
     .animate-glow { animation: bingoGlow 2.4s ease-in-out infinite; }
     .bingo-scroll::-webkit-scrollbar { width: 6px; }
-    .bingo-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+    .bingo-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 8px; }
     .bingo-grid-bg {
       background-image:
-        radial-gradient(circle at 15% 15%, rgba(16,185,129,.10), transparent 40%),
-        radial-gradient(circle at 85% 80%, rgba(45,212,191,.10), transparent 42%);
+        linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px),
+        linear-gradient(135deg, rgba(8,47,73,.42), rgba(15,23,42,.82) 46%, rgba(69,26,3,.34));
+      background-size: 36px 36px, 36px 36px, auto;
+    }
+    .arena-panel {
+      background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(2,6,23,.98));
+      border: 1px solid rgba(100,116,139,.38);
+      border-radius: 8px;
+      box-shadow: 0 18px 45px rgba(0,0,0,.32);
+    }
+    .arena-button {
+      border-radius: 8px;
+      min-height: 44px;
+    }
+    .arena-tile {
+      border-radius: 8px;
+      min-width: 0;
+      min-height: 0;
     }
   `;
 
@@ -760,13 +792,13 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 bingo-grid-bg flex flex-col items-center justify-center text-white p-4">
         <style>{localStyles}</style>
-        <div className="text-center space-y-5">
+        <div className="arena-panel text-center space-y-5 p-8 w-full max-w-sm">
           <div className="relative mx-auto w-16 h-16">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-emerald-400 border-r-transparent border-b-teal-400 border-l-transparent"></div>
-            <Sparkles className="absolute inset-0 m-auto w-6 h-6 text-emerald-400 animate-float" />
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-cyan-300 border-r-transparent border-b-amber-300 border-l-transparent"></div>
+            <RadioTower className="absolute inset-0 m-auto w-6 h-6 text-cyan-300 animate-float" />
           </div>
-          <h2 className="text-xl font-bold tracking-wide text-slate-100">Syncing Bingo Servers…</h2>
-          <p className="text-sm text-slate-400">Loading active game lobbies securely…</p>
+          <h2 className="text-xl font-bold tracking-wide text-slate-100">Opening Arena</h2>
+          <p className="text-sm text-slate-400">Checking rooms and player session.</p>
         </div>
       </div>
     );
@@ -777,40 +809,39 @@ export default function App() {
       <style>{localStyles}</style>
 
       {/* HEADER BAR */}
-      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800/85 py-4 px-6 sticky top-0 z-20 shadow-xl">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-black p-2.5 rounded-xl shadow-lg tracking-wider text-xl flex items-center gap-1.5 animate-glow">
+      <header className="bg-slate-950/88 backdrop-blur-md border-b border-slate-800/85 py-3 px-4 sm:px-6 sticky top-0 z-20 shadow-xl">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-gradient-to-tr from-amber-300 via-cyan-300 to-emerald-300 text-slate-950 font-black h-11 w-11 rounded-lg shadow-lg tracking-wider flex items-center justify-center animate-glow shrink-0">
               <Sparkles className="w-5 h-5 fill-slate-950" />
-              BINGO!
             </div>
             <div>
-              <h1 className="font-extrabold text-2xl bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-                Multiplayer Arena
+              <h1 className="font-extrabold text-xl sm:text-2xl bg-gradient-to-r from-amber-200 via-cyan-200 to-emerald-300 bg-clip-text text-transparent">
+                Bingo Multiplayer Arena
               </h1>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <p className="text-xs text-slate-400">Real-time Game Servers Active</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`h-2 w-2 rounded-full ${isDemo ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse`}></span>
+                <p className="text-xs text-slate-400">{isDemo ? 'Demo preview mode' : 'Firebase realtime mode'}</p>
               </div>
             </div>
           </div>
 
           {isJoined && currentRoom && (
-            <div className="flex items-center gap-2.5 bg-slate-800/80 py-1.5 px-4 rounded-xl border border-slate-700/60 shadow-inner">
-              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+            <div className="flex items-center justify-between sm:justify-start gap-2.5 bg-slate-900/90 py-2 px-3 rounded-lg border border-slate-700/70 shadow-inner">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 shrink-0">
                 {currentRoom.isPrivate ? <Lock className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-                {currentRoom.isPrivate ? 'PRIVATE CODE' : 'ROOM CODE'}
+                {currentRoom.isPrivate ? 'Private' : 'Room'}
               </span>
               <button
                 onClick={copyRoomId}
-                className="bg-slate-700 hover:bg-slate-600 active:scale-95 transition-all text-emerald-300 font-bold px-3 py-1 rounded-lg text-sm flex items-center gap-1.5 border border-slate-600"
-                title="Click to copy Room Code"
+                className="bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all text-cyan-200 font-bold px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border border-slate-600 min-w-0"
+                title="Copy room code"
               >
-                {currentRoom.roomName || roomId}
+                <span className="truncate max-w-[12rem]">{currentRoom.roomName || roomId}</span>
                 {copyFeedback ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-400 stroke-[3]" />
+                  <Check className="h-3.5 w-3.5 text-emerald-300 stroke-[3] shrink-0" />
                 ) : (
-                  <Copy className="h-3.5 w-3.5 text-slate-400 hover:text-emerald-300 transition" />
+                  <Copy className="h-3.5 w-3.5 text-slate-400 hover:text-cyan-200 transition shrink-0" />
                 )}
               </button>
             </div>
@@ -820,33 +851,36 @@ export default function App() {
 
       {/* NOTIFICATIONS */}
       {errorMessage && (
-        <div className="bg-red-950/80 border-b border-red-800 text-red-200 text-center py-3 px-4 text-sm font-semibold flex justify-center items-center gap-2 animate-fade-in">
-          <span className="bg-red-500/20 text-red-400 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide">Error</span>
+        <div className="bg-red-950/88 border-b border-red-800 text-red-100 text-center py-3 px-4 text-sm font-semibold flex justify-center items-center gap-2 animate-fade-in">
+          <span className="bg-red-500/20 text-red-300 rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wide">Error</span>
           <span>{errorMessage}</span>
-          <button onClick={() => setErrorMessage('')} className="ml-4 hover:text-white font-black text-lg transition">&times;</button>
+          <button onClick={() => setErrorMessage('')} className="ml-4 hover:text-white font-black text-lg transition" aria-label="Dismiss error">x</button>
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-emerald-950/80 border-b border-emerald-800 text-emerald-200 text-center py-3 px-4 text-sm font-semibold flex justify-center items-center gap-2 animate-fade-in">
-          <span className="bg-emerald-500/20 text-emerald-400 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide">Success</span>
+        <div className="bg-emerald-950/88 border-b border-emerald-800 text-emerald-100 text-center py-3 px-4 text-sm font-semibold flex justify-center items-center gap-2 animate-fade-in">
+          <span className="bg-emerald-500/20 text-emerald-300 rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wide">Success</span>
           <span>{successMessage}</span>
-          <button onClick={() => setSuccessMessage('')} className="ml-4 hover:text-white font-black text-lg transition">&times;</button>
+          <button onClick={() => setSuccessMessage('')} className="ml-4 hover:text-white font-black text-lg transition" aria-label="Dismiss message">x</button>
         </div>
       )}
 
       {/* MAIN GAME CONTAINER */}
-      <main className="flex-grow max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-start">
+      <main className="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-start">
 
         {/* ROOM LOBBY ENTRANCE */}
         {!isJoined ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start my-auto max-w-4xl w-full mx-auto mt-6 sm:mt-12">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_.95fr] gap-6 items-start my-auto max-w-5xl w-full mx-auto mt-4 sm:mt-8">
 
             {/* LEFT COLUMN: PLAYER DETAILS & ROOM BUILDER */}
-            <div className="bg-slate-900/90 p-6 sm:p-8 rounded-2xl shadow-2xl border border-slate-800/80 space-y-6">
+            <div className="arena-panel p-5 sm:p-6 space-y-6">
               <div className="space-y-1">
-                <h2 className="text-xl font-black text-white">1. Enter Your Profile</h2>
-                <p className="text-xs text-slate-400">Your profile is saved automatically for continuous play.</p>
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-cyan-300" />
+                  Player Setup
+                </h2>
+                <p className="text-xs text-slate-400">Saved locally for your next match.</p>
               </div>
 
               <div>
@@ -857,14 +891,17 @@ export default function App() {
                   placeholder="e.g. Maverick"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value.substring(0, 15))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 px-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
                 />
               </div>
 
               <div className="border-t border-slate-800 pt-5 space-y-3">
                 <div className="space-y-1">
-                  <h2 className="text-xl font-black text-white">2. Create or Join a Room</h2>
-                  <p className="text-xs text-slate-400">Enter a name to create a room, or a friend's code to join theirs.</p>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <KeyRound className="w-5 h-5 text-amber-300" />
+                    Room Access
+                  </h2>
+                  <p className="text-xs text-slate-400">Create a room name or enter a shared code.</p>
                 </div>
 
                 <input
@@ -873,16 +910,16 @@ export default function App() {
                   value={roomNameInput}
                   onChange={(e) => setRoomNameInput(e.target.value.substring(0, 30))}
                   onKeyDown={(e) => { if (e.key === 'Enter') joinRoom(roomNameInput); }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 px-4 text-white placeholder-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 px-4 text-white placeholder-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
                 />
 
                 {/* PUBLIC / PRIVATE TOGGLE (applies when creating) */}
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 border border-slate-800 rounded-xl">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 border border-slate-800 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setIsPrivate(false)}
-                    className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-black transition-all ${
-                      !isPrivate ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-black transition-all ${
+                      !isPrivate ? 'bg-cyan-300 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Globe className="w-3.5 h-3.5" /> Public
@@ -890,7 +927,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setIsPrivate(true)}
-                    className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-black transition-all ${
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-black transition-all ${
                       isPrivate ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -903,8 +940,8 @@ export default function App() {
                   <button
                     onClick={createRoom}
                     disabled={!roomNameInput.trim()}
-                    className={`bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black py-3 px-3 rounded-xl shadow-lg flex items-center justify-center gap-1.5 text-sm transition-all ${
-                      !roomNameInput.trim() ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-emerald-500/25'
+                    className={`arena-button bg-gradient-to-r from-cyan-300 to-emerald-300 hover:from-cyan-200 hover:to-emerald-200 text-slate-950 font-black py-3 px-3 shadow-lg flex items-center justify-center gap-1.5 text-sm transition-all ${
+                      !roomNameInput.trim() ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-cyan-500/20'
                     }`}
                   >
                     <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -913,7 +950,7 @@ export default function App() {
                   <button
                     onClick={() => joinRoom(roomNameInput)}
                     disabled={!roomNameInput.trim()}
-                    className={`bg-slate-800 hover:bg-slate-700 text-white font-black py-3 px-3 rounded-xl border border-slate-700 shadow-lg flex items-center justify-center gap-1.5 text-sm transition-all ${
+                    className={`arena-button bg-slate-800 hover:bg-slate-700 text-white font-black py-3 px-3 border border-slate-700 shadow-lg flex items-center justify-center gap-1.5 text-sm transition-all ${
                       !roomNameInput.trim() ? 'opacity-40 cursor-not-allowed' : ''
                     }`}
                   >
@@ -923,25 +960,25 @@ export default function App() {
                 </div>
                 <p className="text-[11px] text-slate-500 flex items-center gap-1.5 leading-relaxed">
                   {isPrivate
-                    ? <><Lock className="w-3 h-3 shrink-0 text-amber-400" /> New rooms stay hidden — share the code to invite friends.</>
-                    : <><Globe className="w-3 h-3 shrink-0 text-emerald-400" /> New rooms are listed publicly for anyone to join.</>}
+                    ? <><Lock className="w-3 h-3 shrink-0 text-amber-400" /> New rooms stay hidden. Share the code to invite friends.</>
+                    : <><Globe className="w-3 h-3 shrink-0 text-cyan-300" /> New rooms appear in the public lobby.</>}
                 </p>
               </div>
             </div>
 
             {/* RIGHT COLUMN: PUBLIC ROOMS DROPDOWN */}
-            <div className="bg-slate-900/95 p-6 sm:p-8 rounded-2xl shadow-2xl border border-slate-800/90 space-y-5 flex flex-col">
+            <div className="arena-panel p-5 sm:p-6 space-y-5 flex flex-col">
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-black text-white flex items-center gap-1.5">
-                    <Globe className="w-5 h-5 text-teal-400 animate-spin-slow" />
-                    Join a Public Room
+                    <Globe className="w-5 h-5 text-cyan-300" />
+                    Public Rooms
                   </h2>
-                  <span className="bg-slate-800 text-emerald-400 text-xs font-bold px-2.5 py-0.5 rounded-full border border-slate-700/60 animate-pulse">
+                  <span className="bg-slate-800 text-cyan-200 text-xs font-bold px-2.5 py-0.5 rounded border border-slate-700/60 animate-pulse">
                     {availableRooms.length} Open
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">Pick an open lobby from the menu to jump straight in. Private rooms won't appear here — use their code.</p>
+                <p className="text-xs text-slate-400">Open lobbies update in realtime. Private rooms stay code-only.</p>
               </div>
 
               {/* PUBLIC ROOMS DROPDOWN MENU */}
@@ -951,23 +988,23 @@ export default function App() {
                   onClick={() => setIsRoomsOpen((o) => !o)}
                   aria-haspopup="listbox"
                   aria-expanded={isRoomsOpen}
-                  className={`w-full flex items-center justify-between gap-3 bg-slate-950 border rounded-xl py-3.5 px-4 text-left transition-all ${
-                    isRoomsOpen ? 'border-emerald-500/60 ring-2 ring-emerald-500/20' : 'border-slate-800 hover:border-slate-700'
+                  className={`w-full flex items-center justify-between gap-3 bg-slate-950 border rounded-lg py-3.5 px-4 text-left transition-all ${
+                    isRoomsOpen ? 'border-cyan-400/70 ring-2 ring-cyan-400/20' : 'border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Users className="w-4 h-4 text-cyan-300 shrink-0" />
                     <span className="text-sm font-bold text-slate-200 truncate">
-                      {availableRooms.length === 0 ? 'No public rooms available' : 'Select a room to join…'}
+                      {availableRooms.length === 0 ? 'No public rooms available' : 'Select a room to join'}
                     </span>
                   </span>
-                  <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isRoomsOpen ? 'rotate-180 text-emerald-400' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isRoomsOpen ? 'rotate-180 text-cyan-300' : ''}`} />
                 </button>
 
                 {isRoomsOpen && (
                   <div
                     role="listbox"
-                    className="absolute z-30 mt-2 w-full bg-slate-950 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 overflow-hidden animate-fade-in"
+                    className="absolute z-30 mt-2 w-full bg-slate-950 border border-slate-700 rounded-lg shadow-2xl shadow-black/50 overflow-hidden animate-fade-in"
                   >
                     <div className="max-h-72 overflow-y-auto bingo-scroll p-1.5 space-y-1">
                       {availableRooms.length === 0 ? (
@@ -984,18 +1021,18 @@ export default function App() {
                             key={room.id}
                             role="option"
                             onClick={() => { setIsRoomsOpen(false); joinRoom(room.id); }}
-                            className="group w-full text-left p-3 rounded-lg bg-transparent hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/40 transition-all flex justify-between items-center gap-3"
+                            className="group w-full text-left p-3 rounded-lg bg-transparent hover:bg-cyan-500/10 border border-transparent hover:border-cyan-400/40 transition-all flex justify-between items-center gap-3"
                           >
                             <div className="truncate space-y-0.5">
-                              <p className="text-sm font-black text-slate-100 truncate group-hover:text-emerald-300">{room.name}</p>
+                              <p className="text-sm font-black text-slate-100 truncate group-hover:text-cyan-200">{room.name}</p>
                               <p className="text-[10px] text-slate-500 font-mono tracking-wider flex items-center gap-1.5">
-                                <span className="inline-flex items-center gap-1 bg-slate-800/80 px-1.5 py-0.5 rounded text-emerald-400/80">
+                                <span className="inline-flex items-center gap-1 bg-slate-800/80 px-1.5 py-0.5 rounded text-amber-200/90">
                                   {room.playerCount} playing
                                 </span>
                                 <span className="truncate">code: {room.id}</span>
                               </p>
                             </div>
-                            <span className="bg-emerald-500/15 group-hover:bg-emerald-500 text-emerald-400 group-hover:text-slate-950 text-xs font-black py-1.5 px-3 rounded-lg border border-emerald-500/30 transition-all flex items-center gap-1 shrink-0">
+                            <span className="bg-cyan-500/15 group-hover:bg-cyan-300 text-cyan-200 group-hover:text-slate-950 text-xs font-black py-1.5 px-3 rounded-lg border border-cyan-400/30 transition-all flex items-center gap-1 shrink-0">
                               <UserPlus className="w-3.5 h-3.5" />
                               Join
                             </span>
@@ -1008,7 +1045,7 @@ export default function App() {
               </div>
 
               <div className="text-[10px] text-slate-600 text-center pt-1">
-                {availableRooms.length} {availableRooms.length === 1 ? 'room is' : 'rooms are'} live · list auto-updates in real-time.
+                {availableRooms.length} {availableRooms.length === 1 ? 'room is' : 'rooms are'} live.
               </div>
             </div>
 
@@ -1020,40 +1057,57 @@ export default function App() {
             {/* LEFT SIDE PANEL */}
             <div className="lg:col-span-4 space-y-6">
 
+              <div className="grid grid-cols-3 gap-2">
+                <div className="arena-panel p-3">
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Players</p>
+                  <p className="text-xl font-black text-white mt-1">{totalPlayers}</p>
+                </div>
+                <div className="arena-panel p-3">
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Ready</p>
+                  <p className="text-xl font-black text-amber-200 mt-1">{readyPlayers}/{totalPlayers}</p>
+                </div>
+                <div className="arena-panel p-3">
+                  <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Lines</p>
+                  <p className="text-xl font-black text-cyan-200 mt-1">{localCompletedLines}/5</p>
+                </div>
+              </div>
+
               {/* STATUS CARD */}
-              <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl">
+              <div className="arena-panel p-5">
                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Arena Status</h3>
 
                 {currentRoom?.status === 'setup' && (
                   <div className="space-y-2">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25 animate-pulse">
-                      ⏳ SETUP: Arrange Board
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25 animate-pulse">
+                      <ListChecks className="w-3.5 h-3.5" />
+                      Setup
                     </span>
                     {currentRoom?.isPrivate && (
-                      <span className="inline-flex items-center gap-1 ml-2 px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                      <span className="inline-flex items-center gap-1 ml-2 px-3 py-1 rounded text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
                         <Lock className="w-3 h-3" /> Private
                       </span>
                     )}
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Fill your 5×5 board manually or hit <strong>Randomize</strong>. All players must press <strong>Lock &amp; Ready</strong> to start the game!
+                      Fill your board and lock it when ready. The host starts after everyone is ready.
                     </p>
                   </div>
                 )}
 
                 {currentRoom?.status === 'playing' && (
                   <div className="space-y-2">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                      🎮 BATTLE IN PROGRESS
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold bg-cyan-500/10 text-cyan-200 border border-cyan-400/25">
+                      <Activity className="w-3.5 h-3.5" />
+                      In Progress
                     </span>
                     <div className="mt-1">
                       {getActiveTurnUser()?.uid === user.uid ? (
-                        <p className="text-emerald-400 font-black text-base animate-pulse flex items-center gap-1.5">
-                          <Flame className="w-4 h-4 fill-emerald-400 animate-bounce" />
-                          YOUR TURN: Pick a number!
+                        <p className="text-cyan-200 font-black text-base animate-pulse flex items-center gap-1.5">
+                          <Flame className="w-4 h-4 fill-cyan-300 animate-bounce" />
+                          Your turn
                         </p>
                       ) : (
                         <p className="text-xs text-slate-300">
-                          Waiting for <strong className="text-teal-400">{getActiveTurnUser()?.name || 'Player'}</strong> to call…
+                          Waiting for <strong className="text-cyan-200">{getActiveTurnUser()?.name || 'Player'}</strong> to call.
                         </p>
                       )}
                     </div>
@@ -1062,12 +1116,13 @@ export default function App() {
 
                 {currentRoom?.status === 'ended' && (
                   <div className="text-center space-y-3">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-purple-500/10 text-purple-400 border border-purple-500/25">
-                      🏆 ARENA CONCLUDED
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-black bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                      <Trophy className="w-3.5 h-3.5" />
+                      Finished
                     </span>
-                    <div className="bg-purple-950/40 p-4 rounded-xl border border-purple-900/60 shadow-inner">
-                      <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider mb-1">Champions</p>
-                      <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-amber-500">
+                    <div className="bg-slate-950/70 p-4 rounded-lg border border-amber-500/30 shadow-inner">
+                      <p className="text-[10px] text-amber-200 font-bold uppercase tracking-wider mb-1">Champions</p>
+                      <p className="text-xl font-black text-amber-200">
                         {currentRoom.winners?.join(' & ')}
                       </p>
                     </div>
@@ -1079,26 +1134,26 @@ export default function App() {
                   {currentRoom?.status === 'setup' && isRoomMaster && (
                     <button
                       onClick={startGame}
-                      className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black py-2.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                      className="arena-button w-full bg-gradient-to-r from-cyan-300 to-emerald-300 hover:from-cyan-200 hover:to-emerald-200 text-slate-950 font-black py-2.5 px-4 shadow-md transition-all flex items-center justify-center gap-2"
                     >
                       <Play className="w-4 h-4 fill-slate-950 stroke-none" />
-                      Start Game (Host)
+                      Start Match
                     </button>
                   )}
 
                   {currentRoom?.status === 'ended' && isRoomMaster && (
                     <button
                       onClick={restartGame}
-                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black py-2.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                      className="arena-button w-full bg-amber-300 hover:bg-amber-200 text-slate-950 font-black py-2.5 px-4 shadow-md transition-all flex items-center justify-center gap-2"
                     >
                       <RefreshCw className="w-4 h-4" />
-                      Reset and Replay
+                      Replay
                     </button>
                   )}
 
                   <button
                     onClick={leaveRoom}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-red-400 font-bold py-2.5 px-4 rounded-xl border border-slate-700/60 transition flex items-center justify-center gap-2 text-xs"
+                    className="arena-button w-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-red-300 font-bold py-2.5 px-4 border border-slate-700/60 transition flex items-center justify-center gap-2 text-xs"
                   >
                     <LogOut className="w-4 h-4" />
                     Leave Room
@@ -1107,10 +1162,10 @@ export default function App() {
               </div>
 
               {/* PLAYERS & LEADERBOARD */}
-              <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl">
+              <div className="arena-panel p-5">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Active Players</h3>
-                  <span className="bg-slate-800 text-slate-300 text-xs font-black px-2.5 py-0.5 rounded-full border border-slate-700/60">
+                  <span className="bg-slate-800 text-slate-300 text-xs font-black px-2.5 py-0.5 rounded border border-slate-700/60">
                     {getPlayersList().length} Online
                   </span>
                 </div>
@@ -1123,26 +1178,26 @@ export default function App() {
                     return (
                       <div
                         key={player.uid}
-                        className={`flex items-center justify-between p-3 rounded-xl transition-all ${
-                          isTurn ? 'bg-emerald-950/40 border border-emerald-500/40' : 'bg-slate-950 border border-slate-800'
+                        className={`flex items-center justify-between p-3 rounded-lg transition-all ${
+                          isTurn ? 'bg-cyan-950/40 border border-cyan-400/40' : 'bg-slate-950 border border-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 overflow-hidden">
                           {isTurn ? (
-                            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                            <span className="h-2 w-2 rounded-full bg-cyan-300 animate-ping shrink-0" />
                           ) : (
-                            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${player.isReady ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+                            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${player.isReady ? 'bg-emerald-300' : 'bg-slate-700'}`} />
                           )}
 
                           <div className="truncate">
                             <p className="text-xs font-extrabold text-slate-200 flex items-center gap-1.5">
                               <span className="truncate">{player.name}</span>
                               {player.uid === user.uid && <span className="text-[9px] text-slate-400 font-bold bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">You</span>}
-                              {currentRoom.createdBy === player.uid && <span className="text-[9px] text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 rounded">Host</span>}
+                              {currentRoom.createdBy === player.uid && <span className="text-[9px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 rounded flex items-center gap-1"><Crown className="w-2.5 h-2.5" /> Host</span>}
                             </p>
                             <p className="text-[10px] text-slate-500 mt-0.5">
                               {currentRoom.status === 'setup' ? (
-                                player.isReady ? 'Ready to battle!' : 'Setting up board…'
+                                player.isReady ? 'Ready' : 'Setting board'
                               ) : (
                                 `${linesCompleted} lines crossed`
                               )}
@@ -1158,7 +1213,7 @@ export default function App() {
                                   key={idx}
                                   className={`h-1.5 w-1.5 rounded-full ${
                                     idx < linesCompleted
-                                      ? 'bg-amber-400 shadow-sm shadow-amber-400/50'
+                                      ? 'bg-amber-300 shadow-sm shadow-amber-300/50'
                                       : 'bg-slate-800'
                                   }`}
                                 />
@@ -1175,7 +1230,7 @@ export default function App() {
 
               {/* CALLED HISTORIC NUMBERS */}
               {currentRoom?.status === 'playing' && (
-                <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl">
+                <div className="arena-panel p-5">
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Called History</h3>
                   {currentRoom.calledNumbers.length === 0 ? (
                     <p className="text-xs text-slate-500 text-center py-2">No numbers called yet!</p>
@@ -1186,7 +1241,7 @@ export default function App() {
                           key={i}
                           className={`flex items-center justify-center text-xs font-black w-7 h-7 rounded-lg border ${
                             i === 0
-                              ? 'bg-amber-500 text-slate-950 border-amber-400 scale-110 shadow-md shadow-amber-500/25 animate-pulse'
+                              ? 'bg-amber-300 text-slate-950 border-amber-200 scale-110 shadow-md shadow-amber-500/25 animate-pulse'
                               : 'bg-slate-800 text-slate-300 border-slate-700'
                           }`}
                         >
@@ -1204,33 +1259,35 @@ export default function App() {
             <div className="lg:col-span-8 space-y-6">
 
               {/* PLAYING GRID BLOCK */}
-              <div className="bg-slate-900 p-5 sm:p-8 rounded-2xl border border-slate-800 shadow-2xl flex flex-col items-center">
+              <div className="arena-panel p-5 sm:p-6 flex flex-col items-center">
 
                 {/* IN-GAME MOTIVATION / ACTION PROMPTS */}
                 <div className="w-full text-center mb-6">
                   {currentRoom?.status === 'setup' ? (
                     <div className="space-y-3">
-                      <h2 className="text-xl font-black text-white">Grid Board Builder</h2>
+                      <h2 className="text-xl font-black text-white">Board Builder</h2>
                       <p className="text-xs text-slate-400">
                         {isReady
                           ? "Locked in! Waiting for the room master to start."
-                          : `Place number ${selectedSetupNumber > 25 ? '—' : selectedSetupNumber} by clicking on empty tiles.`
+                          : `Place number ${selectedSetupNumber > 25 ? '-' : selectedSetupNumber} on an empty tile.`
                         }
                       </p>
 
                       {!isReady && (
-                        <div className="flex justify-center gap-2 mt-2">
+                        <div className="flex flex-wrap justify-center gap-2 mt-2">
                           <button
                             onClick={randomizeBoard}
-                            className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg border border-slate-700 transition"
+                            className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-2 px-3 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
                           >
-                            🎲 Quick Random
+                            <Dice5 className="w-3.5 h-3.5" />
+                            Random
                           </button>
                           <button
                             onClick={clearBoard}
-                            className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg border border-slate-700 transition"
+                            className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-2 px-3 rounded-lg border border-slate-700 transition flex items-center gap-1.5"
                           >
-                            🧹 Clear Grid
+                            <Eraser className="w-3.5 h-3.5" />
+                            Clear
                           </button>
                         </div>
                       )}
@@ -1239,15 +1296,16 @@ export default function App() {
                         <button
                           onClick={toggleReady}
                           disabled={board.includes(null)}
-                          className={`py-2.5 px-6 rounded-full font-black text-xs transition-all ${
+                          className={`arena-button py-2.5 px-6 font-black text-xs transition-all flex items-center justify-center gap-2 mx-auto ${
                             board.includes(null)
                               ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-800'
                               : isReady
                               ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-lg'
-                              : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-lg animate-glow'
+                              : 'bg-cyan-300 hover:bg-cyan-200 text-slate-950 shadow-lg animate-glow'
                           }`}
                         >
-                          {isReady ? '🔒 Board Locked (Change)' : '🔓 Lock & Mark Ready'}
+                          {isReady ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                          {isReady ? 'Unlock Board' : 'Lock Ready'}
                         </button>
                       </div>
                     </div>
@@ -1260,21 +1318,19 @@ export default function App() {
                         <span className="text-orange-400">G</span>
                         <span className="text-red-400">O</span>
                       </h2>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Select an available tile during your turn to cross it out on everyone's board.
-                      </p>
+                      <p className="text-xs text-slate-400 mt-1">Call a tile when the turn marker is yours.</p>
                     </div>
                   )}
                 </div>
 
                 {/* THE 5x5 BOARD GRID */}
-                <div className="relative w-full max-w-md aspect-square bg-slate-950 p-3 sm:p-5 rounded-2xl border border-slate-800 shadow-inner">
+                <div className="relative w-full max-w-md aspect-square bg-slate-950 p-3 sm:p-5 rounded-lg border border-slate-800 shadow-inner">
 
                   {/* Winning Strike overlay if game ended */}
                   {currentRoom?.status === 'ended' && (
-                    <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm rounded-2xl flex flex-col justify-center items-center p-6 z-10 text-center animate-fade-in">
+                    <div className="absolute inset-0 bg-slate-950/92 backdrop-blur-sm rounded-lg flex flex-col justify-center items-center p-6 z-10 text-center animate-fade-in">
                       <Trophy className="w-16 h-16 text-yellow-400 mb-4 animate-bounce" />
-                      <h3 className="text-2xl font-black text-white">WE HAVE A BINGO!</h3>
+                      <h3 className="text-2xl font-black text-white">Bingo</h3>
                       <p className="text-slate-400 text-xs mt-1 mb-4">The battle has completed.</p>
 
                       <div className="space-y-1">
@@ -1305,15 +1361,15 @@ export default function App() {
                           disabled={
                             currentRoom?.status === 'playing' && (!isTurnOwner || isCalled)
                           }
-                          className={`relative rounded-xl font-black sm:text-2xl text-lg flex items-center justify-center transition-all aspect-square outline-none ${
+                          className={`arena-tile relative font-black sm:text-2xl text-lg flex items-center justify-center transition-all aspect-square outline-none ${
                             currentRoom?.status === 'setup'
                               ? val === null
-                                ? 'bg-slate-900/30 hover:bg-slate-900 border-2 border-dashed border-slate-800 text-slate-700 hover:border-emerald-600/60'
+                                ? 'bg-slate-900/30 hover:bg-slate-900 border-2 border-dashed border-slate-800 text-slate-700 hover:border-cyan-400/60'
                                 : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'
                               : isCalled
-                              ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-slate-950 border-emerald-300 shadow-lg shadow-emerald-500/20 scale-[0.98]'
+                              ? 'bg-gradient-to-br from-amber-300 to-cyan-300 text-slate-950 border-amber-200 shadow-lg shadow-cyan-500/20 scale-[0.98]'
                               : selectableInTurn
-                              ? 'bg-slate-900 hover:bg-slate-800 border-2 border-emerald-500/50 text-emerald-400 hover:scale-105 active:scale-95'
+                              ? 'bg-slate-900 hover:bg-slate-800 border-2 border-cyan-400/60 text-cyan-200 hover:scale-105 active:scale-95'
                               : 'bg-slate-900 text-slate-500 border border-slate-800/80 cursor-not-allowed'
                           }`}
                         >
@@ -1322,7 +1378,7 @@ export default function App() {
                           {/* Checked Crossed Mark Icon */}
                           {currentRoom?.status === 'playing' && isCalled && (
                             <span className="absolute bottom-1 right-1.5 bg-slate-950/60 text-[8px] sm:text-[10px] text-white px-1 py-0.5 rounded-full leading-none font-bold">
-                              ✓
+                              <Check className="w-3 h-3" />
                             </span>
                           )}
                         </button>
@@ -1333,11 +1389,11 @@ export default function App() {
 
                 {/* GAME STATS SUMMARY AT BOTTOM */}
                 {currentRoom?.status === 'playing' && (
-                  <div className="w-full mt-6 bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div className="w-full mt-6 bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="text-center sm:text-left">
                       <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Your Progress</p>
-                      <p className="text-lg font-black text-emerald-400 mt-0.5">
-                        {calculateCompletedLines(board, currentRoom.calledNumbers)} / 5 Lines Completed
+                      <p className="text-lg font-black text-cyan-200 mt-0.5">
+                        {localCompletedLines} / 5 Lines
                       </p>
                     </div>
 
@@ -1347,8 +1403,8 @@ export default function App() {
                         <span className="text-xs font-bold text-slate-200">25 / 25</span>
                       </div>
                       <div className="border-l border-slate-800 pl-4">
-                        <span className="text-[9px] text-slate-400 uppercase tracking-widest block font-bold">Turn History</span>
-                        <span className="text-xs font-bold text-amber-400">{currentRoom.calledNumbers.length} called</span>
+                        <span className="text-[9px] text-slate-400 uppercase tracking-widest block font-bold">Calls</span>
+                        <span className="text-xs font-bold text-amber-200">{currentRoom.calledNumbers.length}</span>
                       </div>
                     </div>
                   </div>
@@ -1356,16 +1412,24 @@ export default function App() {
 
               </div>
 
-              {/* HOW TO PLAY */}
-              <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800/80 shadow-md">
-                <h4 className="text-xs font-black text-slate-300 uppercase tracking-widest mb-2">How to Play:</h4>
-                <ol className="text-xs text-slate-400 space-y-2 list-decimal list-inside">
-                  <li>Fill up your 5×5 board with numbers 1 to 25. No duplicates!</li>
-                  <li>Click 'Lock &amp; Mark Ready' when satisfied.</li>
-                  <li>Once the Room Master kicks off the game, players take turns calling a number from their board.</li>
-                  <li>When a number is called, all players instantly cross that number out if it resides on their board.</li>
-                  <li>The first player to complete 5 lines (rows, columns, or diagonals) wins the BINGO!</li>
-                </ol>
+              {/* MATCH SUMMARY */}
+              <div className="arena-panel p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-black">Room</p>
+                  <p className="text-sm text-white font-bold truncate">{currentRoom?.roomName || roomId}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-black">Mode</p>
+                  <p className="text-sm text-white font-bold">{currentRoom?.isPrivate ? 'Private' : 'Public'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-black">State</p>
+                  <p className="text-sm text-white font-bold capitalize">{currentRoom?.status}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-black">Called</p>
+                  <p className="text-sm text-white font-bold">{currentRoom?.calledNumbers?.length || 0} / 25</p>
+                </div>
               </div>
 
             </div>
@@ -1378,7 +1442,7 @@ export default function App() {
       {/* FOOTER */}
       <footer className="bg-slate-950 py-6 mt-12 border-t border-slate-900 text-center text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-4">
-          <p>© 2026 Real-time Bingo Arena. Fully authenticated and synchronized securely.</p>
+          <p>2026 Real-time Bingo Arena. Authenticated and synchronized with Firebase.</p>
         </div>
       </footer>
 

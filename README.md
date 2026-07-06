@@ -1,4 +1,4 @@
-# 🎯 Bingo Multiplayer Arena
+# Bingo Multiplayer Arena
 
 Real-time multiplayer bingo built with **React + Vite + Firebase (Firestore + Anonymous Auth)**.
 Supports **public rooms** (browsable in the live lobby) and **private rooms** (hidden, joined by code).
@@ -58,6 +58,18 @@ auth + Firestore — you just skip Firebase *Hosting*.
 
 Every push to `main` auto-deploys.
 
+## Deploy to Vercel (CLI)
+
+Use this when the Vercel project is already linked locally:
+
+```bash
+npm run deploy:vercel
+```
+
+Before deploying, set the same `VITE_*` Firebase variables in Vercel project
+settings or with `vercel env add`. Missing Firebase values intentionally fall
+back to single-player demo mode.
+
 ## Deploy to Firebase Hosting (alternative)
 
 > ⚠️ Deploy with **real credentials in `.env`**. If `VITE_FIREBASE_API_KEY` is
@@ -92,7 +104,7 @@ npm run deploy:rules      # just firestore.rules
 After it finishes, the CLI prints your live URL:
 `https://YOUR_FIREBASE_PROJECT_ID.web.app`
 
-Open that on two devices to play real multiplayer. 🎉
+Open that on two devices to play real multiplayer.
 
 ## How private rooms work
 
