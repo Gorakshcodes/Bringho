@@ -117,6 +117,12 @@ const seedDemoRooms = () => {
 export default function App() {
   // Auth and Room State
   const [user, setUser] = useState(null);
+  const [playerId] = useState(() => {
+    const existingPlayerId = sessionStorage.getItem('bingo_player_id');
+    const nextPlayerId = existingPlayerId || 'player-' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('bingo_player_id', nextPlayerId);
+    return nextPlayerId;
+  });
   const [roomNameInput, setRoomNameInput] = useState(''); // Room name — used for both create and join
   const [isPrivate, setIsPrivate] = useState(false); // Whether the created room is hidden from the lobby
   const [roomId, setRoomId] = useState(''); // Document ID
@@ -169,16 +175,14 @@ export default function App() {
     const nextRooms = { ...rooms, [updatedRoom.id || roomId]: updatedRoom };
     saveDemoRooms(nextRooms);
     setCurrentRoom(updatedRoom);
-    setIsRoomMaster(updatedRoom.createdBy === user?.uid);
+    setIsRoomMaster(updatedRoom.createdBy === playerId);
   };
 
   // 1. Authenticate user on mount
   useEffect(() => {
     if (isDemo) {
       // Skip real auth; spin up a throwaway local player.
-      const existingDemoUid = sessionStorage.getItem('bingo_demo_uid');
-      const demoUid = existingDemoUid || 'demo-' + Math.random().toString(36).slice(2, 8);
-      sessionStorage.setItem('bingo_demo_uid', demoUid);
+      const demoUid = playerId;
       setUser({ uid: demoUid, isAnonymous: true });
       setPlayerName(localStorage.getItem('bingo_player_name') || 'Guest');
       setLoading(false);
@@ -212,7 +216,7 @@ export default function App() {
 
     initAuth();
     return () => unsubscribe();
-  }, []);
+  }, [playerId]);
 
   // 2. Fetch and Sync Active Rooms List (fetch & filter in-memory).
   //    Private rooms are intentionally excluded from the public lobby.
@@ -277,7 +281,7 @@ export default function App() {
       const room = rooms[roomId];
       if (room) {
         setCurrentRoom(room);
-        setIsRoomMaster(room.createdBy === user.uid);
+        setIsRoomMaster(room.createdBy === playerId);
       } else {
         setErrorMessage("This room is no longer active.");
         setIsJoined(false);
@@ -291,7 +295,7 @@ export default function App() {
     };
     window.addEventListener('storage', handleDemoRoomsChange);
     return () => window.removeEventListener('storage', handleDemoRoomsChange);
-  }, [user, roomId, isJoined]);
+  }, [user, playerId, roomId, isJoined]);
 
   // 3. Real-time Game State Sync
   useEffect(() => {
@@ -304,7 +308,7 @@ export default function App() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setCurrentRoom(data);
-        setIsRoomMaster(data.createdBy === user.uid);
+        setIsRoomMaster(data.createdBy === playerId);
       } else {
         setErrorMessage("This room is no longer active.");
         setIsJoined(false);
@@ -316,7 +320,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [user, roomId, isJoined]);
+  }, [user, playerId, roomId, isJoined]);
 
   // --- ACTIONS ---
 
@@ -352,10 +356,11 @@ export default function App() {
       roomName: cleanRoomName,
       isPrivate: isPrivate,
       status: 'setup',
-      createdBy: user.uid,
+      createdBy: playerId,
       players: {
-        [user.uid]: {
-          uid: user.uid,
+        [playerId]: {
+          uid: playerId,
+          authUid: user.uid,
           name: playerName.trim(),
           isReady: false,
           bingoLinesCount: 0,
@@ -363,7 +368,7 @@ export default function App() {
         }
       },
       calledNumbers: [],
-      turnOrder: [user.uid],
+      turnOrder: [playerId],
       currentTurnIndex: 0,
       winners: [],
       createdAt: Date.now()
@@ -449,24 +454,25 @@ export default function App() {
         ...existingRoom,
         players: {
           ...existingRoom.players,
-          [user.uid]: {
-            uid: user.uid,
+          [playerId]: {
+            uid: playerId,
+            authUid: user.uid,
             name: playerName.trim(),
             isReady: false,
             bingoLinesCount: 0,
-            joinedAt: existingRoom.players?.[user.uid]?.joinedAt || Date.now()
+            joinedAt: existingRoom.players?.[playerId]?.joinedAt || Date.now()
           }
         },
-        turnOrder: existingRoom.turnOrder?.includes(user.uid)
+        turnOrder: existingRoom.turnOrder?.includes(playerId)
           ? existingRoom.turnOrder
-          : [...(existingRoom.turnOrder || []), user.uid]
+          : [...(existingRoom.turnOrder || []), playerId]
       };
 
       saveDemoRooms({ ...rooms, [cleanRoomId]: joinedRoom });
       setCurrentRoom(joinedRoom);
       setRoomId(cleanRoomId);
       setIsJoined(true);
-      setIsRoomMaster(joinedRoom.createdBy === user.uid);
+      setIsRoomMaster(joinedRoom.createdBy === playerId);
       setRoomNameInput('');
       setSuccessMessage(`Joined ${joinedRoom.roomName || cleanRoomId}!`);
       setTimeout(() => setSuccessMessage(''), 3000);
@@ -489,14 +495,15 @@ export default function App() {
       }
 
       await updateDoc(roomRef, {
-        [`players.${user.uid}`]: {
-          uid: user.uid,
+        [`players.${playerId}`]: {
+          uid: playerId,
+          authUid: user.uid,
           name: playerName.trim(),
           isReady: false,
           bingoLinesCount: 0,
-          joinedAt: roomData.players?.[user.uid]?.joinedAt || Date.now()
+          joinedAt: roomData.players?.[playerId]?.joinedAt || Date.now()
         },
-        turnOrder: arrayUnion(user.uid)
+        turnOrder: arrayUnion(playerId)
       });
 
       setRoomId(cleanRoomId);
@@ -518,13 +525,13 @@ export default function App() {
       const room = rooms[roomId];
       if (room) {
         const updatedPlayers = { ...(room.players || {}) };
-        delete updatedPlayers[user.uid];
-        const updatedTurnOrder = (room.turnOrder || []).filter(uid => uid !== user.uid);
+        delete updatedPlayers[playerId];
+        const updatedTurnOrder = (room.turnOrder || []).filter(uid => uid !== playerId);
         const updatedRoom = {
           ...room,
           players: updatedPlayers,
           turnOrder: updatedTurnOrder,
-          createdBy: room.createdBy === user.uid && updatedTurnOrder.length > 0
+          createdBy: room.createdBy === playerId && updatedTurnOrder.length > 0
             ? updatedTurnOrder[0]
             : room.createdBy
         };
@@ -539,16 +546,16 @@ export default function App() {
     }
     try {
       const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
-      const updatedTurnOrder = currentRoom.turnOrder.filter(uid => uid !== user.uid);
+      const updatedTurnOrder = currentRoom.turnOrder.filter(uid => uid !== playerId);
       let newCreatedBy = currentRoom.createdBy;
 
-      if (currentRoom.createdBy === user.uid && updatedTurnOrder.length > 0) {
+      if (currentRoom.createdBy === playerId && updatedTurnOrder.length > 0) {
         newCreatedBy = updatedTurnOrder[0];
       }
 
       await updateDoc(roomRef, {
-        [`players.${user.uid}`]: deleteField(),
-        turnOrder: arrayRemove(user.uid),
+        [`players.${playerId}`]: deleteField(),
+        turnOrder: arrayRemove(playerId),
         createdBy: newCreatedBy
       });
     } catch (err) {
@@ -643,7 +650,7 @@ export default function App() {
 
     if (isDemo) {
       patchDemoRoom((r) => {
-        r.players[user.uid].isReady = newReadyState;
+        r.players[playerId].isReady = newReadyState;
         return r;
       });
       return;
@@ -652,7 +659,7 @@ export default function App() {
     try {
       const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
       await updateDoc(roomRef, {
-        [`players.${user.uid}.isReady`]: newReadyState
+        [`players.${playerId}.isReady`]: newReadyState
       });
     } catch (err) {
       console.error("Error readying:", err);
@@ -703,7 +710,7 @@ export default function App() {
     if (!currentRoom || currentRoom.status !== 'playing' || !user) return;
 
     const turnOwnerUid = currentRoom.turnOrder[currentRoom.currentTurnIndex];
-    if (turnOwnerUid !== user.uid) {
+    if (turnOwnerUid !== playerId) {
       setErrorMessage("It's not your turn!");
       return;
     }
@@ -722,7 +729,7 @@ export default function App() {
       patchDemoRoom((r) => {
         r.calledNumbers = newCalledNumbers;
         r.currentTurnIndex = nextTurnIndex;
-        r.players[user.uid].bingoLinesCount = localLines;
+        r.players[playerId].bingoLinesCount = localLines;
         return r;
       });
       return;
@@ -733,7 +740,7 @@ export default function App() {
       await updateDoc(roomRef, {
         calledNumbers: newCalledNumbers,
         currentTurnIndex: nextTurnIndex,
-        [`players.${user.uid}.bingoLinesCount`]: localLines
+        [`players.${playerId}.bingoLinesCount`]: localLines
       });
     } catch (err) {
       console.error("Error calling number:", err);
@@ -745,14 +752,14 @@ export default function App() {
     if (!currentRoom || currentRoom.status !== 'playing' || !isJoined || !user) return;
 
     const localLines = calculateCompletedLines(board, currentRoom.calledNumbers);
-    const serverPlayerState = currentRoom.players[user.uid];
+    const serverPlayerState = currentRoom.players[playerId];
 
     if (!isDemo && serverPlayerState && serverPlayerState.bingoLinesCount !== localLines) {
       const updateLinesOnServer = async () => {
         try {
           const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
           await updateDoc(roomRef, {
-            [`players.${user.uid}.bingoLinesCount`]: localLines
+            [`players.${playerId}.bingoLinesCount`]: localLines
           });
         } catch (err) {
           console.warn("Failed to sync lines:", err);
@@ -788,7 +795,7 @@ export default function App() {
       };
       declareWinner();
     }
-  }, [currentRoom?.calledNumbers, board, currentRoom?.status, user, roomId, isJoined]);
+  }, [currentRoom?.calledNumbers, board, currentRoom?.status, user, playerId, roomId, isJoined]);
 
   const restartGame = async () => {
     if (!currentRoom || !user) return;
@@ -1223,7 +1230,7 @@ export default function App() {
                       In Progress
                     </span>
                     <div className="mt-1">
-                      {getActiveTurnUser()?.uid === user.uid ? (
+                      {getActiveTurnUser()?.uid === playerId ? (
                         <p className="text-cyan-200 font-black text-base animate-pulse flex items-center gap-1.5">
                           <Flame className="w-4 h-4 fill-cyan-300 animate-bounce" />
                           Your turn
@@ -1315,7 +1322,7 @@ export default function App() {
                           <div className="truncate">
                             <p className="text-xs font-extrabold text-slate-200 flex items-center gap-1.5">
                               <span className="truncate">{player.name}</span>
-                              {player.uid === user.uid && <span className="text-[9px] text-slate-400 font-bold bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">You</span>}
+                              {player.uid === playerId && <span className="text-[9px] text-slate-400 font-bold bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">You</span>}
                               {currentRoom.createdBy === player.uid && <span className="text-[9px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 rounded flex items-center gap-1"><Crown className="w-2.5 h-2.5" /> Host</span>}
                             </p>
                             <p className="text-[10px] text-slate-500 mt-0.5">
@@ -1468,7 +1475,7 @@ export default function App() {
                   <div className="grid grid-cols-5 gap-2 sm:gap-3 h-full w-full">
                     {board.map((val, idx) => {
                       const isCalled = val !== null && currentRoom?.calledNumbers?.includes(val);
-                      const isTurnOwner = currentRoom?.status === 'playing' && currentRoom.turnOrder[currentRoom.currentTurnIndex] === user.uid;
+                      const isTurnOwner = currentRoom?.status === 'playing' && currentRoom.turnOrder[currentRoom.currentTurnIndex] === playerId;
                       const selectableInTurn = currentRoom?.status === 'playing' && isTurnOwner && !isCalled;
 
                       return (
