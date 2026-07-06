@@ -58,6 +58,7 @@ const app = isDemo ? null : initializeApp(firebaseConfig);
 const auth = isDemo ? null : getAuth(app);
 const db = isDemo ? null : getFirestore(app);
 const demoRoomsStorageKey = `${appId}:demoRooms`;
+const onlineThresholdMs = 30000;
 
 const getDemoRooms = () => {
   try {
@@ -81,14 +82,15 @@ const seedDemoRooms = () => {
       status: 'setup',
       createdBy: 'demo-host-friday',
       players: {
-        'demo-host-friday': { uid: 'demo-host-friday', name: 'Ari', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000 },
-        'demo-guest-friday': { uid: 'demo-guest-friday', name: 'Mina', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 2000 },
-        'demo-pro-friday': { uid: 'demo-pro-friday', name: 'Dev', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 1000 }
+        'demo-host-friday': { uid: 'demo-host-friday', name: 'Ari', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000, lastSeen: Date.now() - 3000 },
+        'demo-guest-friday': { uid: 'demo-guest-friday', name: 'Mina', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 2000, lastSeen: Date.now() - 2000 },
+        'demo-pro-friday': { uid: 'demo-pro-friday', name: 'Dev', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 1000, lastSeen: Date.now() - 1000 }
       },
       calledNumbers: [],
       turnOrder: ['demo-host-friday', 'demo-guest-friday', 'demo-pro-friday'],
       currentTurnIndex: 0,
       winners: [],
+      winnerIds: [],
       createdAt: Date.now() - 3000
     },
     'office-league': {
@@ -98,13 +100,14 @@ const seedDemoRooms = () => {
       status: 'setup',
       createdBy: 'demo-host-office',
       players: {
-        'demo-host-office': { uid: 'demo-host-office', name: 'Noor', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 4000 },
-        'demo-guest-office': { uid: 'demo-guest-office', name: 'Sam', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000 }
+        'demo-host-office': { uid: 'demo-host-office', name: 'Noor', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 4000, lastSeen: Date.now() - 4000 },
+        'demo-guest-office': { uid: 'demo-guest-office', name: 'Sam', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000, lastSeen: Date.now() - 3000 }
       },
       calledNumbers: [],
       turnOrder: ['demo-host-office', 'demo-guest-office'],
       currentTurnIndex: 0,
       winners: [],
+      winnerIds: [],
       createdAt: Date.now() - 4000
     }
   };
@@ -147,6 +150,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [presenceNow, setPresenceNow] = useState(Date.now());
 
   // Helper to format room names to clean document IDs
   const formatRoomId = (name) => {
@@ -322,6 +326,52 @@ export default function App() {
     return () => unsubscribe();
   }, [user, playerId, roomId, isJoined]);
 
+  // Keep the local player visible as "online" while this tab is in a room.
+  useEffect(() => {
+    if (!user || !roomId || !isJoined) return;
+
+    const markOnline = async () => {
+      const timestamp = Date.now();
+      setPresenceNow(timestamp);
+
+      if (isDemo) {
+        const rooms = getDemoRooms();
+        const room = rooms[roomId];
+        if (!room?.players?.[playerId]) return;
+        const updatedRoom = {
+          ...room,
+          players: {
+            ...room.players,
+            [playerId]: {
+              ...room.players[playerId],
+              lastSeen: timestamp
+            }
+          }
+        };
+        saveDemoRooms({ ...rooms, [roomId]: updatedRoom });
+        setCurrentRoom(updatedRoom);
+        return;
+      }
+
+      try {
+        const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+        await updateDoc(roomRef, {
+          [`players.${playerId}.lastSeen`]: timestamp
+        });
+      } catch (err) {
+        console.warn("Failed to update online presence:", err);
+      }
+    };
+
+    markOnline();
+    const heartbeat = setInterval(markOnline, 10000);
+    const clock = setInterval(() => setPresenceNow(Date.now()), 5000);
+    return () => {
+      clearInterval(heartbeat);
+      clearInterval(clock);
+    };
+  }, [user, playerId, roomId, isJoined]);
+
   // --- ACTIONS ---
 
   // Create a Custom Named Room (public or private)
@@ -364,13 +414,15 @@ export default function App() {
           name: playerName.trim(),
           isReady: false,
           bingoLinesCount: 0,
-          joinedAt: Date.now()
+          joinedAt: Date.now(),
+          lastSeen: Date.now()
         }
       },
       calledNumbers: [],
       turnOrder: [playerId],
       currentTurnIndex: 0,
       winners: [],
+      winnerIds: [],
       createdAt: Date.now()
     });
 
@@ -460,7 +512,8 @@ export default function App() {
             name: playerName.trim(),
             isReady: false,
             bingoLinesCount: 0,
-            joinedAt: existingRoom.players?.[playerId]?.joinedAt || Date.now()
+            joinedAt: existingRoom.players?.[playerId]?.joinedAt || Date.now(),
+            lastSeen: Date.now()
           }
         },
         turnOrder: existingRoom.turnOrder?.includes(playerId)
@@ -501,7 +554,8 @@ export default function App() {
           name: playerName.trim(),
           isReady: false,
           bingoLinesCount: 0,
-          joinedAt: roomData.players?.[playerId]?.joinedAt || Date.now()
+          joinedAt: roomData.players?.[playerId]?.joinedAt || Date.now(),
+          lastSeen: Date.now()
         },
         turnOrder: arrayUnion(playerId)
       });
@@ -687,6 +741,7 @@ export default function App() {
         r.currentTurnIndex = 0;
         r.calledNumbers = [];
         r.winners = [];
+        r.winnerIds = [];
         return r;
       });
       return;
@@ -698,7 +753,8 @@ export default function App() {
         status: 'playing',
         currentTurnIndex: 0,
         calledNumbers: [],
-        winners: []
+        winners: [],
+        winnerIds: []
       });
     } catch (err) {
       console.error("Error starting game:", err);
@@ -769,15 +825,16 @@ export default function App() {
     }
 
     const activePlayers = Object.values(currentRoom.players);
-    const winnersList = activePlayers
-      .filter(p => p.bingoLinesCount >= 5)
-      .map(p => p.name);
+    const winners = activePlayers.filter(p => p.bingoLinesCount >= 5);
+    const winnersList = winners.map(p => p.name);
+    const winnerIds = winners.map(p => p.uid);
 
     if (winnersList.length > 0 && currentRoom.status === 'playing') {
       if (isDemo) {
         patchDemoRoom((r) => {
           r.status = 'ended';
           r.winners = winnersList;
+          r.winnerIds = winnerIds;
           return r;
         });
         return;
@@ -787,7 +844,8 @@ export default function App() {
           const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
           await updateDoc(roomRef, {
             status: 'ended',
-            winners: winnersList
+            winners: winnersList,
+            winnerIds
           });
         } catch (err) {
           console.warn("Error declaring winner:", err);
@@ -810,6 +868,7 @@ export default function App() {
         r.calledNumbers = [];
         r.currentTurnIndex = 0;
         r.winners = [];
+        r.winnerIds = [];
         return r;
       });
       setIsReady(false);
@@ -834,6 +893,7 @@ export default function App() {
         calledNumbers: [],
         currentTurnIndex: 0,
         winners: [],
+        winnerIds: [],
         players: updatedPlayers
       });
 
@@ -864,7 +924,21 @@ export default function App() {
 
   const getPlayersList = () => {
     if (!currentRoom) return [];
-    return Object.values(currentRoom.players).sort((a, b) => b.bingoLinesCount - a.bingoLinesCount);
+    return Object.values(currentRoom.players).sort((a, b) => {
+      const aOnline = isPlayerOnline(a) ? 1 : 0;
+      const bOnline = isPlayerOnline(b) ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      return (b.bingoLinesCount || 0) - (a.bingoLinesCount || 0);
+    });
+  };
+
+  const isPlayerOnline = (player) => {
+    const lastSeen = player?.lastSeen || player?.joinedAt || 0;
+    return presenceNow - lastSeen < onlineThresholdMs;
+  };
+
+  const isWinningPlayer = (player) => {
+    return currentRoom?.winnerIds?.includes(player.uid) || currentRoom?.winners?.includes(player.name);
   };
 
   const getActiveTurnUser = () => {
@@ -874,6 +948,9 @@ export default function App() {
   };
 
   const totalPlayers = currentRoom ? Object.keys(currentRoom.players || {}).length : 0;
+  const onlinePlayers = currentRoom
+    ? Object.values(currentRoom.players || {}).filter((player) => isPlayerOnline(player)).length
+    : 0;
   const readyPlayers = currentRoom
     ? Object.values(currentRoom.players || {}).filter((player) => player.isReady).length
     : 0;
@@ -1190,7 +1267,8 @@ export default function App() {
               <div className="grid grid-cols-3 gap-2">
                 <div className="arena-panel p-3">
                   <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Players</p>
-                  <p className="text-xl font-black text-white mt-1">{totalPlayers}</p>
+                  <p className="text-xl font-black text-white mt-1">{onlinePlayers}/{totalPlayers}</p>
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Online</p>
                 </div>
                 <div className="arena-panel p-3">
                   <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Ready</p>
@@ -1253,7 +1331,7 @@ export default function App() {
                     <div className="bg-slate-950/70 p-4 rounded-lg border border-amber-500/30 shadow-inner">
                       <p className="text-[10px] text-amber-200 font-bold uppercase tracking-wider mb-1">Champions</p>
                       <p className="text-xl font-black text-amber-200">
-                        {currentRoom.winners?.join(' & ')}
+                        {currentRoom.winners?.length ? currentRoom.winners.join(' & ') : 'Winner recorded'}
                       </p>
                     </div>
                   </div>
@@ -1296,7 +1374,7 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Active Players</h3>
                   <span className="bg-slate-800 text-slate-300 text-xs font-black px-2.5 py-0.5 rounded border border-slate-700/60">
-                    {getPlayersList().length} Online
+                    {onlinePlayers} Online / {totalPlayers} Joined
                   </span>
                 </div>
 
@@ -1304,19 +1382,25 @@ export default function App() {
                   {getPlayersList().map((player) => {
                     const isTurn = currentRoom?.status === 'playing' && currentRoom.turnOrder[currentRoom.currentTurnIndex] === player.uid;
                     const linesCompleted = player.bingoLinesCount || 0;
+                    const playerOnline = isPlayerOnline(player);
+                    const playerWon = isWinningPlayer(player);
 
                     return (
                       <div
                         key={player.uid}
                         className={`flex items-center justify-between p-3 rounded-lg transition-all ${
-                          isTurn ? 'bg-cyan-950/40 border border-cyan-400/40' : 'bg-slate-950 border border-slate-800'
+                          playerWon
+                            ? 'bg-amber-950/30 border border-amber-400/45'
+                            : isTurn
+                            ? 'bg-cyan-950/40 border border-cyan-400/40'
+                            : 'bg-slate-950 border border-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 overflow-hidden">
                           {isTurn ? (
                             <span className="h-2 w-2 rounded-full bg-cyan-300 animate-ping shrink-0" />
                           ) : (
-                            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${player.isReady ? 'bg-emerald-300' : 'bg-slate-700'}`} />
+                            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${playerOnline ? 'bg-emerald-300' : 'bg-slate-700'}`} />
                           )}
 
                           <div className="truncate">
@@ -1324,12 +1408,13 @@ export default function App() {
                               <span className="truncate">{player.name}</span>
                               {player.uid === playerId && <span className="text-[9px] text-slate-400 font-bold bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">You</span>}
                               {currentRoom.createdBy === player.uid && <span className="text-[9px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.5 border border-amber-500/20 rounded flex items-center gap-1"><Crown className="w-2.5 h-2.5" /> Host</span>}
+                              {playerWon && <span className="text-[9px] text-slate-950 font-black bg-amber-300 px-1.5 py-0.5 rounded flex items-center gap-1"><Trophy className="w-2.5 h-2.5" /> Winner</span>}
                             </p>
                             <p className="text-[10px] text-slate-500 mt-0.5">
                               {currentRoom.status === 'setup' ? (
-                                player.isReady ? 'Ready' : 'Setting board'
+                                `${playerOnline ? 'Online' : 'Away'} - ${player.isReady ? 'Ready' : 'Setting board'}`
                               ) : (
-                                `${linesCompleted} lines crossed`
+                                `${playerOnline ? 'Online' : 'Away'} - ${linesCompleted} lines crossed`
                               )}
                             </p>
                           </div>
@@ -1337,6 +1422,9 @@ export default function App() {
 
                         {currentRoom.status !== 'setup' && (
                           <div className="text-right">
+                            {playerWon && (
+                              <p className="text-[9px] text-amber-300 font-black uppercase tracking-wide mb-1">Won</p>
+                            )}
                             <div className="flex items-center gap-0.5">
                               {Array.from({ length: 5 }).map((_, idx) => (
                                 <span
@@ -1468,6 +1556,9 @@ export default function App() {
                         {currentRoom.winners?.map((w, idx) => (
                           <p key={idx} className="text-lg font-black text-amber-400">{w}</p>
                         ))}
+                        {!currentRoom.winners?.length && (
+                          <p className="text-lg font-black text-amber-400">Winner recorded</p>
+                        )}
                       </div>
                     </div>
                   )}
