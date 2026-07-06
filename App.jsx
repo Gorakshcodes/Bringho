@@ -7,7 +7,10 @@ import {
   getDoc,
   collection,
   onSnapshot,
-  updateDoc
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+  deleteField
 } from 'firebase/firestore';
 import {
   getAuth,
@@ -54,6 +57,62 @@ const isDemo = !firebaseConfig || !firebaseConfig.apiKey;
 const app = isDemo ? null : initializeApp(firebaseConfig);
 const auth = isDemo ? null : getAuth(app);
 const db = isDemo ? null : getFirestore(app);
+const demoRoomsStorageKey = `${appId}:demoRooms`;
+
+const getDemoRooms = () => {
+  try {
+    return JSON.parse(localStorage.getItem(demoRoomsStorageKey) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const saveDemoRooms = (rooms) => {
+  localStorage.setItem(demoRoomsStorageKey, JSON.stringify(rooms));
+};
+
+const seedDemoRooms = () => {
+  const existingRooms = getDemoRooms();
+  const seededRooms = {
+    'friday-fun-night': {
+      id: 'friday-fun-night',
+      roomName: 'Friday Fun Night',
+      isPrivate: false,
+      status: 'setup',
+      createdBy: 'demo-host-friday',
+      players: {
+        'demo-host-friday': { uid: 'demo-host-friday', name: 'Ari', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000 },
+        'demo-guest-friday': { uid: 'demo-guest-friday', name: 'Mina', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 2000 },
+        'demo-pro-friday': { uid: 'demo-pro-friday', name: 'Dev', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 1000 }
+      },
+      calledNumbers: [],
+      turnOrder: ['demo-host-friday', 'demo-guest-friday', 'demo-pro-friday'],
+      currentTurnIndex: 0,
+      winners: [],
+      createdAt: Date.now() - 3000
+    },
+    'office-league': {
+      id: 'office-league',
+      roomName: 'Office League',
+      isPrivate: false,
+      status: 'setup',
+      createdBy: 'demo-host-office',
+      players: {
+        'demo-host-office': { uid: 'demo-host-office', name: 'Noor', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 4000 },
+        'demo-guest-office': { uid: 'demo-guest-office', name: 'Sam', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000 }
+      },
+      calledNumbers: [],
+      turnOrder: ['demo-host-office', 'demo-guest-office'],
+      currentTurnIndex: 0,
+      winners: [],
+      createdAt: Date.now() - 4000
+    }
+  };
+
+  const mergedRooms = { ...seededRooms, ...existingRooms };
+  saveDemoRooms(mergedRooms);
+  return mergedRooms;
+};
 
 export default function App() {
   // Auth and Room State
@@ -102,14 +161,24 @@ export default function App() {
 
   // Local helper for demo mode: patch the in-memory room immutably.
   const patchDemoRoom = (updater) => {
-    setCurrentRoom((prev) => (prev ? updater(JSON.parse(JSON.stringify(prev))) : prev));
+    const rooms = getDemoRooms();
+    const sourceRoom = rooms[roomId] || currentRoom;
+    if (!sourceRoom) return;
+
+    const updatedRoom = updater(JSON.parse(JSON.stringify(sourceRoom)));
+    const nextRooms = { ...rooms, [updatedRoom.id || roomId]: updatedRoom };
+    saveDemoRooms(nextRooms);
+    setCurrentRoom(updatedRoom);
+    setIsRoomMaster(updatedRoom.createdBy === user?.uid);
   };
 
   // 1. Authenticate user on mount
   useEffect(() => {
     if (isDemo) {
       // Skip real auth; spin up a throwaway local player.
-      const demoUid = 'demo-' + Math.random().toString(36).slice(2, 8);
+      const existingDemoUid = sessionStorage.getItem('bingo_demo_uid');
+      const demoUid = existingDemoUid || 'demo-' + Math.random().toString(36).slice(2, 8);
+      sessionStorage.setItem('bingo_demo_uid', demoUid);
       setUser({ uid: demoUid, isAnonymous: true });
       setPlayerName(localStorage.getItem('bingo_player_name') || 'Guest');
       setLoading(false);
@@ -151,13 +220,26 @@ export default function App() {
     if (!user) return;
 
     if (isDemo) {
-      // Seed a lively-looking lobby so the browser has something to show.
-      setAvailableRooms([
-        { id: 'friday-fun-night', name: 'Friday Fun Night', playerCount: 3, createdBy: 'demo-a' },
-        { id: 'office-league', name: 'Office League', playerCount: 5, createdBy: 'demo-b' },
-        { id: 'family-bingo', name: 'Family Bingo', playerCount: 2, createdBy: 'demo-c' }
-      ]);
-      return;
+      const syncDemoLobby = () => {
+        const rooms = seedDemoRooms();
+        const roomsList = Object.values(rooms)
+          .filter((room) => room.status === 'setup' && !room.isPrivate)
+          .map((room) => ({
+            id: room.id,
+            name: room.roomName || room.id,
+            playerCount: room.players ? Object.keys(room.players).length : 0,
+            createdBy: room.createdBy
+          }))
+          .sort((a, b) => b.playerCount - a.playerCount);
+        setAvailableRooms(roomsList);
+      };
+
+      syncDemoLobby();
+      const handleDemoRoomsChange = (event) => {
+        if (event.key === demoRoomsStorageKey) syncDemoLobby();
+      };
+      window.addEventListener('storage', handleDemoRoomsChange);
+      return () => window.removeEventListener('storage', handleDemoRoomsChange);
     }
 
     const roomsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms');
@@ -186,10 +268,35 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Sync shared demo rooms across tabs/windows in preview mode.
+  useEffect(() => {
+    if (!isDemo || !user || !roomId || !isJoined) return;
+
+    const syncJoinedDemoRoom = () => {
+      const rooms = getDemoRooms();
+      const room = rooms[roomId];
+      if (room) {
+        setCurrentRoom(room);
+        setIsRoomMaster(room.createdBy === user.uid);
+      } else {
+        setErrorMessage("This room is no longer active.");
+        setIsJoined(false);
+        setCurrentRoom(null);
+      }
+    };
+
+    syncJoinedDemoRoom();
+    const handleDemoRoomsChange = (event) => {
+      if (event.key === demoRoomsStorageKey) syncJoinedDemoRoom();
+    };
+    window.addEventListener('storage', handleDemoRoomsChange);
+    return () => window.removeEventListener('storage', handleDemoRoomsChange);
+  }, [user, roomId, isJoined]);
+
   // 3. Real-time Game State Sync
   useEffect(() => {
     if (!user || !roomId || !isJoined) return;
-    if (isDemo) return; // Demo rooms live purely in local state.
+    if (isDemo) return; // Demo rooms are synced with localStorage above.
 
     const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
 
@@ -263,13 +370,18 @@ export default function App() {
     });
 
     if (isDemo) {
-      // Solo local room — no persistence, but the full flow is playable.
       const demoRoom = buildRoomData();
+      const rooms = getDemoRooms();
+      if (rooms[generatedRoomId] && rooms[generatedRoomId].status !== 'ended') {
+        setErrorMessage("A room with that name is already active. Join it by code or pick a unique name.");
+        return;
+      }
+      saveDemoRooms({ ...rooms, [generatedRoomId]: demoRoom });
       setCurrentRoom(demoRoom);
       setRoomId(generatedRoomId);
       setIsJoined(true);
       setIsRoomMaster(true);
-      setSuccessMessage(`Demo room "${cleanRoomName}" created! (offline mode)`);
+      setSuccessMessage(`Demo room "${cleanRoomName}" created!`);
       setTimeout(() => setSuccessMessage(''), 4000);
       return;
     }
@@ -322,33 +434,41 @@ export default function App() {
     localStorage.setItem('bingo_player_name', playerName.trim());
 
     if (isDemo) {
-      const label = availableRooms.find((r) => r.id === cleanRoomId)?.name || cleanRoomId;
-      setCurrentRoom({
-        id: cleanRoomId,
-        roomName: label,
-        isPrivate: false,
-        status: 'setup',
-        createdBy: user.uid, // you host the demo room so you can start it solo
+      const rooms = seedDemoRooms();
+      const existingRoom = rooms[cleanRoomId];
+      if (!existingRoom) {
+        setErrorMessage(`No room found with that code. Double-check the spelling.`);
+        return;
+      }
+      if (existingRoom.status !== 'setup') {
+        setErrorMessage("This game is already in progress.");
+        return;
+      }
+
+      const joinedRoom = {
+        ...existingRoom,
         players: {
+          ...existingRoom.players,
           [user.uid]: {
             uid: user.uid,
             name: playerName.trim(),
             isReady: false,
             bingoLinesCount: 0,
-            joinedAt: Date.now()
+            joinedAt: existingRoom.players?.[user.uid]?.joinedAt || Date.now()
           }
         },
-        calledNumbers: [],
-        turnOrder: [user.uid],
-        currentTurnIndex: 0,
-        winners: [],
-        createdAt: Date.now()
-      });
+        turnOrder: existingRoom.turnOrder?.includes(user.uid)
+          ? existingRoom.turnOrder
+          : [...(existingRoom.turnOrder || []), user.uid]
+      };
+
+      saveDemoRooms({ ...rooms, [cleanRoomId]: joinedRoom });
+      setCurrentRoom(joinedRoom);
       setRoomId(cleanRoomId);
       setIsJoined(true);
-      setIsRoomMaster(true);
+      setIsRoomMaster(joinedRoom.createdBy === user.uid);
       setRoomNameInput('');
-      setSuccessMessage(`Joined ${label}! (offline demo — solo play)`);
+      setSuccessMessage(`Joined ${joinedRoom.roomName || cleanRoomId}!`);
       setTimeout(() => setSuccessMessage(''), 3000);
       return;
     }
@@ -368,25 +488,15 @@ export default function App() {
         return;
       }
 
-      const updatedPlayers = {
-        ...roomData.players,
-        [user.uid]: {
+      await updateDoc(roomRef, {
+        [`players.${user.uid}`]: {
           uid: user.uid,
           name: playerName.trim(),
           isReady: false,
           bingoLinesCount: 0,
-          joinedAt: Date.now()
-        }
-      };
-
-      const updatedTurnOrder = [...roomData.turnOrder];
-      if (!updatedTurnOrder.includes(user.uid)) {
-        updatedTurnOrder.push(user.uid);
-      }
-
-      await updateDoc(roomRef, {
-        players: updatedPlayers,
-        turnOrder: updatedTurnOrder
+          joinedAt: roomData.players?.[user.uid]?.joinedAt || Date.now()
+        },
+        turnOrder: arrayUnion(user.uid)
       });
 
       setRoomId(cleanRoomId);
@@ -404,6 +514,22 @@ export default function App() {
   const leaveRoom = async () => {
     if (!currentRoom || !user) return;
     if (isDemo) {
+      const rooms = getDemoRooms();
+      const room = rooms[roomId];
+      if (room) {
+        const updatedPlayers = { ...(room.players || {}) };
+        delete updatedPlayers[user.uid];
+        const updatedTurnOrder = (room.turnOrder || []).filter(uid => uid !== user.uid);
+        const updatedRoom = {
+          ...room,
+          players: updatedPlayers,
+          turnOrder: updatedTurnOrder,
+          createdBy: room.createdBy === user.uid && updatedTurnOrder.length > 0
+            ? updatedTurnOrder[0]
+            : room.createdBy
+        };
+        saveDemoRooms({ ...rooms, [roomId]: updatedRoom });
+      }
       setIsJoined(false);
       setCurrentRoom(null);
       setIsReady(false);
@@ -413,9 +539,6 @@ export default function App() {
     }
     try {
       const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
-      const updatedPlayers = { ...currentRoom.players };
-      delete updatedPlayers[user.uid];
-
       const updatedTurnOrder = currentRoom.turnOrder.filter(uid => uid !== user.uid);
       let newCreatedBy = currentRoom.createdBy;
 
@@ -424,8 +547,8 @@ export default function App() {
       }
 
       await updateDoc(roomRef, {
-        players: updatedPlayers,
-        turnOrder: updatedTurnOrder,
+        [`players.${user.uid}`]: deleteField(),
+        turnOrder: arrayRemove(user.uid),
         createdBy: newCreatedBy
       });
     } catch (err) {
