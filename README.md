@@ -35,7 +35,30 @@ Supports **public rooms** (browsable in the live lobby) and **private rooms** (h
    ```
    Open the printed URL. Open a second browser/incognito window to play against yourself.
 
-## Deploy to Firebase Hosting
+## Deploy to Vercel (from GitHub)
+
+Vercel hosts the **static frontend**. The realtime backend is still Firebase
+(Firestore + Auth), so you still create a Firebase project and enable Anonymous
+auth + Firestore — you just skip Firebase *Hosting*.
+
+1. **Push to GitHub** (see commands below).
+2. Go to <https://vercel.com/new> → **Import** your GitHub repo.
+   Vercel auto-detects Vite (build `vite build`, output `dist` — already set in
+   [`vercel.json`](vercel.json)).
+3. In the Vercel import screen, add **Environment Variables** — the same keys as
+   [`.env.example`](.env.example):
+   `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+   `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`,
+   `VITE_FIREBASE_APP_ID`, `VITE_APP_ID`.
+   > ⚠️ If these are missing, the deploy builds fine but runs in single-player
+   > demo mode.
+4. Click **Deploy**. You get a public URL like `https://your-app.vercel.app`.
+5. In the **Firebase Console → Authentication → Settings → Authorized domains**,
+   add your `*.vercel.app` domain so anonymous sign-in is allowed.
+
+Every push to `main` auto-deploys.
+
+## Deploy to Firebase Hosting (alternative)
 
 > ⚠️ Deploy with **real credentials in `.env`**. If `VITE_FIREBASE_API_KEY` is
 > empty the app builds fine but silently runs in single-player demo mode.
