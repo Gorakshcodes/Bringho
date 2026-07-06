@@ -74,47 +74,13 @@ const saveDemoRooms = (rooms) => {
 
 const seedDemoRooms = () => {
   const existingRooms = getDemoRooms();
-  const seededRooms = {
-    'friday-fun-night': {
-      id: 'friday-fun-night',
-      roomName: 'Friday Fun Night',
-      isPrivate: false,
-      status: 'setup',
-      createdBy: 'demo-host-friday',
-      players: {
-        'demo-host-friday': { uid: 'demo-host-friday', name: 'Ari', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000, lastSeen: Date.now() - 3000 },
-        'demo-guest-friday': { uid: 'demo-guest-friday', name: 'Mina', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 2000, lastSeen: Date.now() - 2000 },
-        'demo-pro-friday': { uid: 'demo-pro-friday', name: 'Dev', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 1000, lastSeen: Date.now() - 1000 }
-      },
-      calledNumbers: [],
-      turnOrder: ['demo-host-friday', 'demo-guest-friday', 'demo-pro-friday'],
-      currentTurnIndex: 0,
-      winners: [],
-      winnerIds: [],
-      createdAt: Date.now() - 3000
-    },
-    'office-league': {
-      id: 'office-league',
-      roomName: 'Office League',
-      isPrivate: false,
-      status: 'setup',
-      createdBy: 'demo-host-office',
-      players: {
-        'demo-host-office': { uid: 'demo-host-office', name: 'Noor', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 4000, lastSeen: Date.now() - 4000 },
-        'demo-guest-office': { uid: 'demo-guest-office', name: 'Sam', isReady: false, bingoLinesCount: 0, joinedAt: Date.now() - 3000, lastSeen: Date.now() - 3000 }
-      },
-      calledNumbers: [],
-      turnOrder: ['demo-host-office', 'demo-guest-office'],
-      currentTurnIndex: 0,
-      winners: [],
-      winnerIds: [],
-      createdAt: Date.now() - 4000
-    }
-  };
-
-  const mergedRooms = { ...seededRooms, ...existingRooms };
-  saveDemoRooms(mergedRooms);
-  return mergedRooms;
+  const playableRooms = Object.fromEntries(
+    Object.entries(existingRooms).filter(([, room]) => !String(room.createdBy || '').startsWith('demo-host-'))
+  );
+  if (Object.keys(playableRooms).length !== Object.keys(existingRooms).length) {
+    saveDemoRooms(playableRooms);
+  }
+  return playableRooms;
 };
 
 export default function App() {
@@ -810,7 +776,17 @@ export default function App() {
     const localLines = calculateCompletedLines(board, currentRoom.calledNumbers);
     const serverPlayerState = currentRoom.players[playerId];
 
-    if (!isDemo && serverPlayerState && serverPlayerState.bingoLinesCount !== localLines) {
+    if (serverPlayerState && serverPlayerState.bingoLinesCount !== localLines) {
+      if (isDemo) {
+        patchDemoRoom((r) => {
+          if (r.players?.[playerId]) {
+            r.players[playerId].bingoLinesCount = localLines;
+          }
+          return r;
+        });
+        return;
+      }
+
       const updateLinesOnServer = async () => {
         try {
           const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
@@ -1663,7 +1639,11 @@ export default function App() {
       {/* FOOTER */}
       <footer className="bg-slate-950 py-6 mt-12 border-t border-slate-900 text-center text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-4">
-          <p>2026 Real-time Bingo Arena. Authenticated and synchronized with Firebase.</p>
+          <p>
+            {isDemo
+              ? '2026 Real-time Bingo Arena. Local demo sync across tabs on this device.'
+              : '2026 Real-time Bingo Arena. Authenticated and synchronized with Firebase.'}
+          </p>
         </div>
       </footer>
 
